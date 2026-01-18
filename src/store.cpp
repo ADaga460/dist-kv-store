@@ -4,12 +4,14 @@
 #include <iostream>
 
 bool Store::set(const std::string& key, const std::string& value) {
+    std::lock_guard<std::mutex> lock(mutex_);  // access lock
     data_[key] = value;
     std::cout << "[STORE] SET: " << key << " = " << value << std::endl;
     return true;
 }
 
 std::pair<bool, std::string> Store::get(const std::string& key) {
+    std::lock_guard<std::mutex> lock(mutex_);  // read lock
     auto it = data_.find(key);
     if (it != data_.end()) {
         std::cout << "[STORE] GET: " << key << " -> " << it->second << std::endl;
@@ -20,6 +22,7 @@ std::pair<bool, std::string> Store::get(const std::string& key) {
 }
 
 std::string Store::dump() {
+    std::lock_guard<std::mutex> lock(mutex_);  // lock for iteration
     std::stringstream ss;
     ss << "Total keys: " << data_.size() << "\n";
     
@@ -36,5 +39,6 @@ std::string Store::dump() {
 }
 
 size_t Store::size() const {
+    std::lock_guard<std::mutex> lock(mutex_);  // lock for size check
     return data_.size();
 }

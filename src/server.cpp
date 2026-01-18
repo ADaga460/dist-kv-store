@@ -3,12 +3,13 @@
 #include <winsock2.h>
 #include "../include/store.h"
 #include "../include/protocol.h"
+#include "../include/threadpool.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
+// Force unbuffered output for Windows
 static struct ConsoleInit {
     ConsoleInit() {
-        std::cout.sync_with_stdio(false);
         std::setvbuf(stdout, NULL, _IONBF, 0);
     }
 } console_init;
@@ -16,28 +17,33 @@ static struct ConsoleInit {
 void handleClient(SOCKET client_sock, Store& store) {
     char buffer[4096];
     
-    std::cout << "[SERVER] Client connected (socket: " << client_sock << ")" << std::endl;
+    std::cout << "[SERVER] Thread " << std::this_thread::get_id() 
+              << " handling client (socket: " << client_sock << ")" << std::endl;
     
     while (true) {
         int bytes = recv(client_sock, buffer, sizeof(buffer), 0);
         
         if (bytes <= 0) {
-            std::cout << "[SERVER] Client disconnected (bytes: " << bytes << ")" << std::endl;
+            std::cout << "[SERVER] Client disconnected (thread " 
+                      << std::this_thread::get_id() << ")" << std::endl;
             break;
         }
         
-        std::cout << "[SERVER] Received " << bytes << " bytes" << std::endl;
+        std::cout << "[SERVER] Thread " << std::this_thread::get_id() 
+                  << " received " << bytes << " bytes" << std::endl;
         
         Request req = Protocol::decodeRequest(buffer, bytes);
         Response resp;
         
         if (req.cmd == Command::SET) {
-            std::cout << "[SERVER] Command: SET key='" << req.key << "' value='" << req.value << "'" << std::endl;
+            std::cout << "[SERVER] Thread " << std::this_thread::get_id() 
+                      << " SET key='" << req.key << "' value='" << req.value << "'" << std::endl;
             store.set(req.key, req.value);
             resp.status = Status::OK;
             
         } else if (req.cmd == Command::GET) {
-            std::cout << "[SERVER] Command: GET key='" << req.key << "'" << std::endl;
+            std::cout << "[SERVER] Thread " << std::this_thread::get_id() 
+                      << " GET key='" << req.key << "'" << std::endl;
             auto [found, value] = store.get(req.key);
             if (found) {
                 resp.status = Status::OK;
@@ -47,7 +53,8 @@ void handleClient(SOCKET client_sock, Store& store) {
             }
             
         } else if (req.cmd == Command::DUMP) {
-            std::cout << "[SERVER] Command: DUMP (listing all keys)" << std::endl;
+            std::cout << "[SERVER] Thread " << std::this_thread::get_id() 
+                      << " DUMP" << std::endl;
             resp.status = Status::OK;
             resp.data = store.dump();
             
@@ -58,14 +65,15 @@ void handleClient(SOCKET client_sock, Store& store) {
         
         auto encoded = Protocol::encodeResponse(resp);
         int sent = send(client_sock, encoded.data(), encoded.size(), 0);
-        std::cout << "[SERVER] Sent " << sent << " bytes (status: " << (int)resp.status << ")" << std::endl;
+        std::cout << "[SERVER] Thread " << std::this_thread::get_id() 
+                  << " sent " << sent << " bytes" << std::endl;
     }
     
     closesocket(client_sock);
 }
 
 int main() {
-    std::cout << "=== Distributed KV Store Server ===" << std::endl;
+    std::cout << "=== Distributed KV Store Server (Multi-threaded) ===" << std::endl;
     std::cout << "[INIT] Starting Winsock..." << std::endl;
     
     WSADATA wsa;
@@ -93,17 +101,27 @@ int main() {
     }
     
     std::cout << "[INIT] Listening for connections..." << std::endl;
-    listen(server_sock, 5);
+    listen(server_sock, 10);
     
-    std::cout << "[READY] Server listening on port 8080" << std::endl;
-    std::cout << "========================================" << std::endl;
-    
+    // 4 worker threads to start
+    ThreadPool pool(4);
     Store store;
     
+    std::cout << "[READY] Server listening on port 8080 (4 worker threads)" << std::endl;
+    std::cout << "========================================" << std::endl;
+    
     while (true) {
-        std::cout << "\n[SERVER] Waiting for client... (current keys: " << store.size() << ")" << std::endl;
+        std::cout << "\n[SERVER] Waiting for client... (current keys: " 
+                  << store.size() << ")" << std::endl;
+        
         SOCKET client_sock = accept(server_sock, NULL, NULL);
-        handleClient(client_sock, store);
+        
+        std::cout << "[SERVER] Client accepted, submitting to thread pool" << std::endl;
+        
+        // cubmit client to pool
+        pool.submit([client_sock, &store]() {
+            handleClient(client_sock, store);
+        });
     }
     
     closesocket(server_sock);
