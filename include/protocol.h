@@ -3,6 +3,13 @@
 #include <vector>
 #include <cstdint>
 
+// constants
+namespace Protocol {
+    constexpr size_t MAX_KEY_SIZE = 256;
+    constexpr size_t MAX_VALUE_SIZE = 1024 * 64;  // 64KB
+    constexpr size_t MAX_MESSAGE_SIZE = 1024 * 128;  // 128KB
+}
+
 enum class Command : uint8_t {
     SET = 0x01,
     GET = 0x02,
@@ -19,17 +26,29 @@ struct Request {
     Command cmd;
     std::string key;
     std::string value;
+    
+    Request() : cmd(Command::GET) {}
+    Request(Command c, const std::string& k, const std::string& v = "") 
+        : cmd(c), key(k), value(v) {}
 };
 
 struct Response {
     Status status;
     std::string data;
+    
+    Response() : status(Status::ERR) {}
+    Response(Status s, const std::string& d = "") 
+        : status(s), data(d) {}
 };
 
-class Protocol {
+class ProtocolEncoder {
 public:
     static std::vector<char> encodeRequest(const Request& req);
     static std::vector<char> encodeResponse(const Response& resp);
     static Request decodeRequest(const char* data, size_t len);
     static Response decodeResponse(const char* data, size_t len);
+    
+private:
+    static void writeUint16(std::vector<char>& buf, uint16_t value);
+    static uint16_t readUint16(const char* data);
 };
