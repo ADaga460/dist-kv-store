@@ -1,0 +1,14 @@
+# Build output
+build/
+out/
+cmake-build*/
+
+# Runtime data (WAL, snapshots) — from Phase 3 on
+data/
+*.log
+
+# Editor
+.vscode/
+
+# Old ad-hoc test script (superseded by ctest)
+testing.ps1

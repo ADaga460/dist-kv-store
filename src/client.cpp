@@ -1,95 +1,77 @@
+#include <spdlog/spdlog.h>
+
 #include <iostream>
-#include <winsock2.h>
 #include <string>
-#include "../include/protocol.h"
 
-#pragma comment(lib, "ws2_32.lib")
+#include "config.h"
+#include "net/connection.h"
+#include "protocol.h"
 
-static struct ConsoleInit {
-    ConsoleInit() { std::setvbuf(stdout, NULL, _IONBF, 0); }
-} console_init;
+namespace {
 
-class SimpleClient {
-public:
-    SimpleClient(const std::string& host, int port) {
-        WSADATA wsa;
-        WSAStartup(MAKEWORD(2,2), &wsa);
-        
-        sock_ = socket(AF_INET, SOCK_STREAM, 0);
-        
-        sockaddr_in server_addr{};
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_addr.s_addr = inet_addr(host.c_str());
-        server_addr.sin_port = htons(port);
-        
-        if (connect(sock_, (sockaddr*)&server_addr, sizeof(server_addr)) != 0) {
-            throw std::runtime_error("Connection failed");
-        }
-    }
-    
-    ~SimpleClient() {
-        closesocket(sock_);
-        WSACleanup();
-    }
-    
-    Response sendRequest(const Request& req) {
-        auto encoded = ProtocolEncoder::encodeRequest(req);
-        send(sock_, encoded.data(), encoded.size(), 0);
-        
-        char buffer[4096];
-        int bytes = recv(sock_, buffer, sizeof(buffer), 0);
-        
-        return ProtocolEncoder::decodeResponse(buffer, bytes);
-    }
-    
-private:
-    SOCKET sock_;
-};
+void printUsage() {
+    std::cout << "Usage: client [--connect_host H] [--connect_port P] <command> [key] [value]\n"
+              << "  client set <key> <value>\n"
+              << "  client get <key>\n"
+              << "  client dump\n";
+}
+
+}  // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        std::cout << "Usage: client <command> [key] [value]" << std::endl;
-        std::cout << "  client set <key> <value>" << std::endl;
-        std::cout << "  client get <key>" << std::endl;
-        std::cout << "  client dump" << std::endl;
+    Config cfg;
+    // The client shares the flag parser but only cares about connect_host/port.
+    // Collect positional (non-flag) args separately.
+    std::vector<std::string> pos;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a.rfind("--", 0) == 0) {
+            // consume "--key value" form (skip the value too)
+            if (a.find('=') == std::string::npos && i + 1 < argc) ++i;
+            continue;
+        }
+        pos.push_back(a);
+    }
+    cfg.parseArgs(argc, argv);
+    cfg.applyLogLevel();
+
+    if (pos.empty()) {
+        printUsage();
         return 1;
     }
-    
+
+    Request req;
+    const std::string& cmd = pos[0];
+    if (cmd == "set" && pos.size() == 3) {
+        req = Request(Command::SET, pos[1], pos[2]);
+    } else if (cmd == "get" && pos.size() == 2) {
+        req = Request(Command::GET, pos[1]);
+    } else if (cmd == "dump") {
+        req = Request(Command::DUMP, "");
+    } else {
+        printUsage();
+        return 1;
+    }
+
     try {
-        SimpleClient client("127.0.0.1", 8080);
-        
-        std::string cmd = argv[1];
-        Request req;
-        
-        if (cmd == "set" && argc == 4) {
-            req = Request(Command::SET, argv[2], argv[3]);
-        } else if (cmd == "get" && argc == 3) {
-            req = Request(Command::GET, argv[2]);
-        } else if (cmd == "dump") {
-            req = Request(Command::DUMP, "");
-        } else {
-            std::cerr << "Invalid command" << std::endl;
-            return 1;
+        SyncClient client(cfg.connect_host, cfg.connect_port);
+        Response resp = client.send(req);
+
+        switch (resp.status) {
+            case Status::OK:
+                if (!resp.data.empty()) std::cout << resp.data;
+                else std::cout << "OK\n";
+                break;
+            case Status::NOT_FOUND:
+                std::cout << "NOT_FOUND\n";
+                break;
+            default:
+                std::cout << "ERR\n";
+                return 1;
         }
-        
-        Response resp = client.sendRequest(req);
-        
-        if (resp.status == Status::OK) {
-            if (!resp.data.empty()) {
-                std::cout << resp.data;
-            } else {
-                std::cout << "OK" << std::endl;
-            }
-        } else if (resp.status == Status::NOT_FOUND) {
-            std::cout << "NOT_FOUND" << std::endl;
-        } else {
-            std::cout << "ERR" << std::endl;
-        }
-        
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
-    
     return 0;
 }
