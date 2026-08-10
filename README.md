@@ -1,29 +1,66 @@
-# Distributed Bank Simulator
+# Distributed Key-Value Store
 
-A faux bank you can hammer from many machines at once. The **server is the bank**;
-**clients are nodes** — individuals moving their own money, and systems (payroll,
-tax, settlement) sweeping many accounts. The bank holds **government, corporate,
-personal-savings, and its own** accounts, each with a lock.
+A key-value store written from scratch in C++20: an asynchronous TCP server, an
+ordered in-memory storage engine behind a swappable interface, a custom
+length-prefixed binary protocol, and a command-line client — all cross-platform,
+tested, and built with CMake.
 
-The whole point is **contention**: lots of nodes racing to move the same money.
-Distributed locks with leases and fencing tokens keep it correct — no double-spend,
-no lost updates, money always conserved. Under the hood it's a strongly-consistent
-distributed key-value store (Raft-replicated), so the bank survives node failures.
+The request model is being developed against a **bank scenario** (accounts,
+transfers, per-account locks) purely as a concrete domain to drive the data model
+and access patterns. It's a framing device, not the product — the engine itself is
+a general-purpose ordered KV store.
 
-> **Money is integer cents (`int64`) only.** No floats, no decimals, no string
-> amounts — anywhere. Every amount on the wire, in the store, and in the ledger is
-> an integer, and non-integer amounts are rejected. Floating-point money loses
-> pennies; this project refuses to.
+## What's here today
 
-## Status
+Everything below is implemented and tested — not aspirational:
 
-Early. The distributed KV **foundation** is built and working; the bank layer is
-next. Concretely:
+- **Async transport** (`src/net/`) — an ASIO `io_context` driven by a pool of
+  threads accepts connections; each becomes a `Session` that reads and writes
+  asynchronously. No thread is pinned to a connection.
+- **Framing** — every message is a 4-byte big-endian length prefix followed by the
+  payload, so a reader always assembles a complete message before decoding.
+- **Binary protocol** (`src/protocol.cpp`) — a request is a command byte plus a
+  `uint32`-length-prefixed key and value; a response is a status byte
+  (`OK`/`NOT_FOUND`/`ERR`) plus `uint32`-length data. The decoder rejects malformed
+  frames (returns `std::optional`) instead of silently misreading them.
+- **Ordered storage engine** — `Store` (`src/store.cpp`) keeps data in a
+  `std::map` behind a mutex and implements a `StorageEngine` interface
+  (`get`/`set`/`scan`/`dump`/`size`). It supports point operations and **ordered
+  prefix scans** (`scan("accounts/gov/")`), which a hash map can't do.
+- **CLI client + server** speaking `SET`/`GET`/`DUMP` over the wire. (`scan` exists
+  in the engine but isn't a wire command yet.)
+- **Config** (`src/config.cpp`) — node id, host/port, workers, log level, etc. from
+  CLI flags or a `--config` file; nothing is hardcoded.
+- **Logging** via spdlog; **24 unit tests** via GoogleTest/CTest; a build + end-to-end
+  test script (`run-tests.ps1`).
 
-- **Done:** cross-platform build, async ASIO networking with proper framing,
-  config, logging, tests, and a working `SET`/`GET`/`DUMP` store.
-- **Next:** ordered store → accounts + integer-cent ledger → atomic transfers →
-  the distributed lock manager → persistence → Raft. See the [roadmap](#roadmap).
+## Structure
+
+The code is organized around clear seams so each layer can change independently:
+
+```
+Transport (net/)     TcpServer, Session, SyncClient — ASIO + framing
+      │
+Protocol             ProtocolEncoder — encode/decode requests & responses
+      │
+Storage              StorageEngine (interface)  ←— the swap point
+                     └─ Store (ordered std::map + mutex)
+```
+
+The `StorageEngine` interface is the important boundary: callers depend on it, not
+on `Store`, so a persistent or replicated backend can drop in later without
+touching the server or protocol code.
+
+```
+include/       public headers
+  net/         framing + connection (ASIO transport)
+  storage_engine.h   the storage interface
+src/           server, client, store, protocol, config
+  net/         transport implementation
+tests/         GoogleTest unit tests
+run-tests.ps1  build + unit + end-to-end test script
+CMakeLists.txt build + dependency fetching
+```
 
 ## Build
 
@@ -43,7 +80,7 @@ Produces `server` and `client` in `build/`.
 build/server --listen_port 8080 --log_level info
 ```
 
-In another terminal (today's commands — bank ops land with Phase 3):
+In another terminal:
 
 ```
 build/client set user1 Alice
@@ -65,62 +102,31 @@ Or the all-in-one script (build + unit tests + end-to-end):
 ./run-tests.ps1
 ```
 
-## How it works (today)
+## Where this is going
 
-**Framing.** Each message is a 4-byte big-endian length prefix followed by the
-payload, so the reader always pulls a full message before decoding.
+The current single-node store is the foundation for a fault-tolerant, persistent
+distributed store. The direction, roughly in order:
 
-**Protocol.** Inside a frame: a request is a command byte + key + value (each
-length-prefixed); a response is a status byte (`OK`/`NOT_FOUND`/`ERR`) + data.
+- **Persistence** — a write-ahead log + snapshots behind the same `StorageEngine`
+  interface, so data survives restarts; eventually an on-disk B+tree replaces the
+  in-memory map (the ordering contract stays identical, so callers don't change).
+- **Replication** — Raft consensus across a cluster, turning the storage engine
+  into a replicated state machine that stays consistent through node failures.
+- **Coordination** — a distributed lock manager built on the ordered keyspace and
+  consensus (leases + fencing tokens), which is what the bank scenario's contention
+  is meant to exercise.
+- **Domain layer** — fleshing out the bank scenario: accounts with `int64` cent
+  balances (money is integer-only — no floats, ever), atomic transfers, and a
+  double-entry ledger, as the concrete workload that stresses all of the above.
 
-**Server.** ASIO accepts connections; each becomes an async session that reads a
-framed request, runs it against the store, and writes a framed response. No thread
-is pinned to a connection.
-
-**Store.** An in-memory map behind a mutex. This becomes an **ordered** store in
-Phase 2 — the bank needs ordered keys for deadlock-safe lock ordering, range/prefix
-locks, category scans, and fair wait-queues.
-
-## The bank model (planned)
-
-Namespaced keyspace:
-
-```
-/accounts/gov/<id>        balance in int64 cents, owner, status
-/accounts/corp/<id>
-/accounts/personal/<id>
-/accounts/bank/<id>       the bank's own reserves
-/ledger/<acct>/<ts>-<seq> append-only double-entry history
-/locks/accounts/<id>      holder, lease, fencing token
-```
-
-The core operation is `TRANSFER(from, to, amount, txn_id)`: lock both accounts in
-ascending id order (so opposing transfers can't deadlock), check the balance,
-debit + credit with matching ledger entries, commit, release. A repeated `txn_id`
-is applied at most once.
-
-## Roadmap
-
-| Phase | What |
-|------:|------|
-| 0 ✅ | CMake, config, spdlog logging, tests |
-| 1 ✅ | ASIO transport + framing, cross-platform (retire Winsock2) |
-| 2 | Ordered `StorageEngine` (`std::map`), protocol v2 (`uint32` lengths), `SCAN` |
-| 3 | Bank domain: accounts, integer-cent double-entry ledger, atomic transfers |
-| 4 | **Distributed lock manager** — leases, fencing tokens, hierarchical locks |
-| 5 | Persistence: write-ahead log + snapshots |
-| 6 | Raft consensus — replication, leader redirect, fencing = log index |
-| 7 | Cluster ops: dynamic membership, snapshot install |
-| 8 | Hardening: contention demo, metrics, TLS, benchmarks, failure testing |
-
-## Layout
-
-```
-include/       public headers
-  net/         framing + connection (ASIO transport)
-src/           server, client, store, protocol, config
-  net/         transport implementation
-tests/         GoogleTest unit tests
-run-tests.ps1  build + unit + end-to-end test script
-CMakeLists.txt build + dependency fetching
-```
+| Phase | What | Status |
+|------:|------|--------|
+| 0 | CMake, config, spdlog logging, tests | done |
+| 1 | ASIO transport + framing, cross-platform | done |
+| 2 | Ordered `StorageEngine`, `uint32` protocol lengths, decode-error handling, `scan` | done |
+| 3 | Domain layer: accounts, integer-cent ledger, atomic transfers | next |
+| 4 | Distributed lock manager — leases, fencing tokens, hierarchical locks | planned |
+| 5 | Persistence: write-ahead log + snapshots | planned |
+| 6 | Raft consensus — replication, leader redirect | planned |
+| 7 | Cluster ops: dynamic membership, snapshot install | planned |
+| 8 | Hardening: metrics, TLS, benchmarks, failure testing | planned |
