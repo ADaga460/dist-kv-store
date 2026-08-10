@@ -53,8 +53,8 @@ private:
             socket_, asio::buffer(body_),
             [this, self](std::error_code ec, std::size_t) {
                 if (ec) return close(ec);
-                Request req = ProtocolEncoder::decodeRequest(body_.data(), body_.size());
-                Response resp = handler_(req);
+                auto req = ProtocolEncoder::decodeRequest(body_.data(), body_.size());
+                Response resp = req ? handler_(*req) : Response(Status::ERR);
                 write(resp);
             });
     }

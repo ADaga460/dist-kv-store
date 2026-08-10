@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <optional>
 
 // constants
 namespace Protocol {
@@ -45,7 +46,7 @@ class ProtocolEncoder {
 public:
     static std::vector<char> encodeRequest(const Request& req);
     static std::vector<char> encodeResponse(const Response& resp);
-    static Request decodeRequest(const char* data, size_t len);
+    static std::optional<Request> decodeRequest(const char* data, size_t len);
     static Response decodeResponse(const char* data, size_t len);
     
 private:

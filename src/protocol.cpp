@@ -38,23 +38,21 @@ std::vector<char> ProtocolEncoder::encodeRequest(const Request& req) {
     return buffer;
 }
 
-Request ProtocolEncoder::decodeRequest(const char* data, size_t len) {
-    Request req;
-    if (len < 9) return req;
+std::optional<Request> ProtocolEncoder::decodeRequest(const char* data, size_t len) {
+    if (len < 9) return std::nullopt;
 
+    Request req;
     req.cmd = static_cast<Command>(data[0]);
 
     uint32_t key_len = readUint32(data + 1);
-    if (5 + static_cast<size_t>(key_len) > len) return req;
+    if (5 + static_cast<size_t>(key_len) > len) return std::nullopt;
     req.key = std::string(data + 5, key_len);
 
     size_t val_offset = 5 + key_len;
-    if (val_offset + 4 <= len) {
-        uint32_t val_len = readUint32(data + val_offset);
-        if (val_offset + 4 + static_cast<size_t>(val_len) <= len) {
-            req.value = std::string(data + val_offset + 4, val_len);
-        }
-    }
+    if (val_offset + 4 > len) return std::nullopt;
+    uint32_t val_len = readUint32(data + val_offset);
+    if (val_offset + 4 + static_cast<size_t>(val_len) > len) return std::nullopt;
+    req.value = std::string(data + val_offset + 4, val_len);
 
     return req;
 }

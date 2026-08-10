@@ -8,7 +8,7 @@
 TEST(ProtocolTest, RequestRoundTripSet) {
     Request in(Command::SET, "mykey", "myvalue");
     auto bytes = ProtocolEncoder::encodeRequest(in);
-    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size());
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size()).value();
 
     EXPECT_EQ(out.cmd, Command::SET);
     EXPECT_EQ(out.key, "mykey");
@@ -18,7 +18,7 @@ TEST(ProtocolTest, RequestRoundTripSet) {
 TEST(ProtocolTest, RequestRoundTripGetHasNoValue) {
     Request in(Command::GET, "mykey");
     auto bytes = ProtocolEncoder::encodeRequest(in);
-    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size());
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size()).value();
 
     EXPECT_EQ(out.cmd, Command::GET);
     EXPECT_EQ(out.key, "mykey");
@@ -46,7 +46,7 @@ TEST(ProtocolTest, ResponseNotFoundHasEmptyData) {
 TEST(ProtocolTest, EmptyKeyAndValueRoundTrip) {
     Request in(Command::DUMP, "", "");
     auto bytes = ProtocolEncoder::encodeRequest(in);
-    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size());
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size()).value();
 
     EXPECT_EQ(out.cmd, Command::DUMP);
     EXPECT_TRUE(out.key.empty());
@@ -59,10 +59,20 @@ TEST(ProtocolTest, LargeValueWithinUint16RoundTrips) {
     const std::string big(60000, 'x');
     Request in(Command::SET, "k", big);
     auto bytes = ProtocolEncoder::encodeRequest(in);
-    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size());
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size()).value();
 
     EXPECT_EQ(out.value.size(), big.size());
     EXPECT_EQ(out.value, big);
+}
+
+TEST(ProtocolTest, DecodeTooShortRequestReturnsNullopt) {
+    const char buf[2] = {0x01, 0x00};
+    EXPECT_FALSE(ProtocolEncoder::decodeRequest(buf, sizeof(buf)).has_value());
+}
+
+TEST(ProtocolTest, DecodeTruncatedKeyReturnsNullopt) {
+    const char buf[9] = {0x01, 100, 0, 0, 0, 0, 0, 0, 0};
+    EXPECT_FALSE(ProtocolEncoder::decodeRequest(buf, sizeof(buf)).has_value());
 }
 
 TEST(ProtocolTest, ValueAboveUint16CeilingRoundTrips) {
@@ -70,7 +80,7 @@ TEST(ProtocolTest, ValueAboveUint16CeilingRoundTrips) {
     ASSERT_GT(big.size(), 65535u);
     Request in(Command::SET, "k", big);
     auto bytes = ProtocolEncoder::encodeRequest(in);
-    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size());
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size()).value();
 
     EXPECT_EQ(out.value.size(), big.size());
     EXPECT_EQ(out.value, big);
