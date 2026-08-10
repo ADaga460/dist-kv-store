@@ -1,16 +1,19 @@
 #pragma once
-#include <unordered_map>
-#include <string>
+#include <map>
 #include <mutex>
+#include <string>
+#include <utility>
 
-class Store {
+#include "storage_engine.h"
+
+class Store : public StorageEngine {
 public:
-    bool set(const std::string& key, const std::string& value);
-    std::pair<bool, std::string> get(const std::string& key);
-    std::string dump();
-    size_t size() const;
-    
+    bool set(const std::string& key, const std::string& value) override;
+    std::pair<bool, std::string> get(const std::string& key) override;
+    std::string dump() override;
+    size_t size() const override;
+
 private:
-    std::unordered_map<std::string, std::string> data_;
+    std::map<std::string, std::string> data_;
     mutable std::mutex mutex_;
 };

@@ -1,4 +1,5 @@
-#include "../include/store.h"
+#include "store.h"
+
 #include <sstream>
 
 bool Store::set(const std::string& key, const std::string& value) {
