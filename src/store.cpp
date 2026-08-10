@@ -17,6 +17,16 @@ std::pair<bool, std::string> Store::get(const std::string& key) {
     return {false, ""};
 }
 
+std::vector<std::pair<std::string, std::string>> Store::scan(const std::string& prefix) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::pair<std::string, std::string>> results;
+    for (auto it = data_.lower_bound(prefix); it != data_.end(); ++it) {
+        if (it->first.compare(0, prefix.size(), prefix) != 0) break;
+        results.emplace_back(it->first, it->second);
+    }
+    return results;
+}
+
 std::string Store::dump() {
     std::lock_guard<std::mutex> lock(mutex_);
     std::stringstream ss;

@@ -64,3 +64,14 @@ TEST(ProtocolTest, LargeValueWithinUint16RoundTrips) {
     EXPECT_EQ(out.value.size(), big.size());
     EXPECT_EQ(out.value, big);
 }
+
+TEST(ProtocolTest, ValueAboveUint16CeilingRoundTrips) {
+    const std::string big(Protocol::MAX_VALUE_SIZE, 'y');
+    ASSERT_GT(big.size(), 65535u);
+    Request in(Command::SET, "k", big);
+    auto bytes = ProtocolEncoder::encodeRequest(in);
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size());
+
+    EXPECT_EQ(out.value.size(), big.size());
+    EXPECT_EQ(out.value, big);
+}

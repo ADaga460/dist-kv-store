@@ -68,3 +68,47 @@ TEST(StoreTest, ConcurrentWritesAreSafe) {
 
     EXPECT_EQ(s.size(), static_cast<size_t>(kThreads * kPerThread));
 }
+
+TEST(StoreTest, ScanPrefixReturnsMatchingKeysSorted) {
+    Store s;
+    s.set("accounts/gov/2", "b");
+    s.set("accounts/gov/1", "a");
+    s.set("accounts/corp/1", "c");
+    auto rows = s.scan("accounts/gov/");
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0].first, "accounts/gov/1");
+    EXPECT_EQ(rows[0].second, "a");
+    EXPECT_EQ(rows[1].first, "accounts/gov/2");
+    EXPECT_EQ(rows[1].second, "b");
+}
+
+TEST(StoreTest, ScanEmptyPrefixReturnsAllSorted) {
+    Store s;
+    s.set("b", "2");
+    s.set("a", "1");
+    s.set("c", "3");
+    auto rows = s.scan("");
+    ASSERT_EQ(rows.size(), 3u);
+    EXPECT_EQ(rows[0].first, "a");
+    EXPECT_EQ(rows[1].first, "b");
+    EXPECT_EQ(rows[2].first, "c");
+}
+
+TEST(StoreTest, ScanNonMatchingPrefixReturnsEmpty) {
+    Store s;
+    s.set("apple", "1");
+    s.set("banana", "2");
+    EXPECT_TRUE(s.scan("cherry").empty());
+}
+
+TEST(StoreTest, ScanPrefixBoundary) {
+    Store s;
+    s.set("acc", "x");
+    s.set("acct/1", "1");
+    s.set("acctx", "2");
+    s.set("bcct", "y");
+    auto rows = s.scan("acct");
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0].first, "acct/1");
+    EXPECT_EQ(rows[1].first, "acctx");
+}

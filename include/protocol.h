@@ -49,6 +49,6 @@ public:
     static Response decodeResponse(const char* data, size_t len);
     
 private:
-    static void writeUint16(std::vector<char>& buf, uint16_t value);
-    static uint16_t readUint16(const char* data);
+    static void writeUint32(std::vector<char>& buf, uint32_t value);
+    static uint32_t readUint32(const char* data);
 };

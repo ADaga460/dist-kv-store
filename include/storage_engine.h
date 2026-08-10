@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <string>
 #include <utility>
+#include <vector>
 
 class StorageEngine {
 public:
@@ -9,6 +10,7 @@ public:
 
     virtual bool set(const std::string& key, const std::string& value) = 0;
     virtual std::pair<bool, std::string> get(const std::string& key) = 0;
+    virtual std::vector<std::pair<std::string, std::string>> scan(const std::string& prefix) = 0;
     virtual std::string dump() = 0;
     virtual size_t size() const = 0;
 };
