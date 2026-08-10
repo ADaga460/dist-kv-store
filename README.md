@@ -2,17 +2,15 @@
 
 A key-value store written from scratch in C++20: an asynchronous TCP server, an
 ordered in-memory storage engine behind a swappable interface, a custom
-length-prefixed binary protocol, and a command-line client — all cross-platform,
-tested, and built with CMake.
+length-prefixed binary protocol, and a command-line client.
 
 The request model is being developed against a **bank scenario** (accounts,
 transfers, per-account locks) purely as a concrete domain to drive the data model
-and access patterns. It's a framing device, not the product — the engine itself is
-a general-purpose ordered KV store.
+and access patterns. It's a framing device, not the product.
 
 ## What's here today
 
-Everything below is implemented and tested — not aspirational:
+Everything below is implemented and tested:
 
 - **Async transport** (`src/net/`) — an ASIO `io_context` driven by a pool of
   threads accepts connections; each becomes a `Session` that reads and writes
