@@ -14,8 +14,9 @@ add_executable(kv_tests
     test_store.cpp
     test_protocol.cpp
     test_config.cpp
+    test_account.cpp
 )
 target_link_libraries(kv_tests PRIVATE kvcore GTest::gtest_main)
 
 include(GoogleTest)
-gtest_discover_tests(kv_tests)
+gtest_discover_tests(kv_tests DISCOVERY_MODE PRE_TEST)

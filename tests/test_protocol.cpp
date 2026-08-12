@@ -25,6 +25,16 @@ TEST(ProtocolTest, RequestRoundTripGetHasNoValue) {
     EXPECT_TRUE(out.value.empty());
 }
 
+TEST(ProtocolTest, RequestRoundTripScanCarriesPrefix) {
+    Request in(Command::SCAN, "accounts/gov/");
+    auto bytes = ProtocolEncoder::encodeRequest(in);
+    Request out = ProtocolEncoder::decodeRequest(bytes.data(), bytes.size()).value();
+
+    EXPECT_EQ(out.cmd, Command::SCAN);
+    EXPECT_EQ(out.key, "accounts/gov/");
+    EXPECT_TRUE(out.value.empty());
+}
+
 TEST(ProtocolTest, ResponseRoundTrip) {
     Response in(Status::OK, "some data");
     auto bytes = ProtocolEncoder::encodeResponse(in);

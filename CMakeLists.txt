@@ -57,6 +57,7 @@ add_library(kvcore STATIC
     src/protocol.cpp
     src/store.cpp
     src/config.cpp
+    src/account.cpp
     src/net/connection.cpp
 )
 target_include_directories(kvcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

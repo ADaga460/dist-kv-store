@@ -13,6 +13,7 @@ void printUsage() {
     std::cout << "Usage: client [--connect_host H] [--connect_port P] <command> [key] [value]\n"
               << "  client set <key> <value>\n"
               << "  client get <key>\n"
+              << "  client scan <prefix>\n"
               << "  client dump\n";
 }
 
@@ -46,6 +47,8 @@ int main(int argc, char** argv) {
         req = Request(Command::SET, pos[1], pos[2]);
     } else if (cmd == "get" && pos.size() == 2) {
         req = Request(Command::GET, pos[1]);
+    } else if (cmd == "scan" && pos.size() == 2) {
+        req = Request(Command::SCAN, pos[1]);
     } else if (cmd == "dump") {
         req = Request(Command::DUMP, "");
     } else {

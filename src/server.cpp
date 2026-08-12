@@ -2,6 +2,7 @@
 
 #include <csignal>
 
+#include "account.h"
 #include "config.h"
 #include "net/connection.h"
 #include "protocol.h"
@@ -21,6 +22,7 @@ int main(int argc, char** argv) {
     cfg.applyLogLevel();
 
     Store store;
+    seedAccounts(store);
 
     // Translate a decoded request into a response against the store. This is the
     // single place command handling lives; the transport layer is unaware of it.
@@ -38,6 +40,13 @@ int main(int argc, char** argv) {
             case Command::DUMP:
                 spdlog::info("DUMP {} keys", store.size());
                 return Response(Status::OK, store.dump());
+            case Command::SCAN: {
+                auto rows = store.scan(req.key);
+                spdlog::info("SCAN {} -> {} matches", req.key, rows.size());
+                std::string out = "Total matches: " + std::to_string(rows.size()) + "\n";
+                for (const auto& [k, v] : rows) out += k + " = " + v + "\n";
+                return Response(Status::OK, out);
+            }
             default:
                 spdlog::warn("unknown command {}", static_cast<int>(req.cmd));
                 return Response(Status::ERR);

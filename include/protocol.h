@@ -14,7 +14,8 @@ namespace Protocol {
 enum class Command : uint8_t {
     SET = 0x01,
     GET = 0x02,
-    DUMP = 0x03
+    DUMP = 0x03,
+    SCAN = 0x04
 };
 
 enum class Status : uint8_t {
