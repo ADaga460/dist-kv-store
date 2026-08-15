@@ -1,6 +1,7 @@
 #include "account.h"
 
 #include <array>
+#include <cstdint>
 #include <stdexcept>
 
 #include "storage_engine.h"
@@ -74,6 +75,30 @@ std::optional<Account> deserializeAccount(const std::string& data) {
         return std::nullopt;
     }
     return acct;
+}
+
+TxResult deposit(StorageEngine& store, const std::string& key, int64_t amount) {
+    if (amount <= 0) return {TxStatus::InvalidAmount, 0};
+    auto [found, val] = store.get(key);
+    if (!found) return {TxStatus::NotFound, 0};
+    auto acct = deserializeAccount(val);
+    if (!acct) return {TxStatus::InvalidAmount, 0};
+    if (acct->balance_cents > INT64_MAX - amount) return {TxStatus::InvalidAmount, 0};
+    acct->balance_cents += amount;
+    store.set(key, serializeAccount(*acct));
+    return {TxStatus::Ok, acct->balance_cents};
+}
+
+TxResult withdraw(StorageEngine& store, const std::string& key, int64_t amount) {
+    if (amount <= 0) return {TxStatus::InvalidAmount, 0};
+    auto [found, val] = store.get(key);
+    if (!found) return {TxStatus::NotFound, 0};
+    auto acct = deserializeAccount(val);
+    if (!acct) return {TxStatus::InvalidAmount, 0};
+    if (acct->balance_cents < amount) return {TxStatus::InsufficientFunds, acct->balance_cents};
+    acct->balance_cents -= amount;
+    store.set(key, serializeAccount(*acct));
+    return {TxStatus::Ok, acct->balance_cents};
 }
 
 void seedAccounts(StorageEngine& store) {

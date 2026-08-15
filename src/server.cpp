@@ -1,6 +1,8 @@
 #include <spdlog/spdlog.h>
 
 #include <csignal>
+#include <cstdint>
+#include <string>
 
 #include "account.h"
 #include "config.h"
@@ -46,6 +48,29 @@ int main(int argc, char** argv) {
                 std::string out = "Total matches: " + std::to_string(rows.size()) + "\n";
                 for (const auto& [k, v] : rows) out += k + " = " + v + "\n";
                 return Response(Status::OK, out);
+            }
+            case Command::DEPOSIT:
+            case Command::WITHDRAW: {
+                int64_t amount;
+                try {
+                    amount = std::stoll(req.value);
+                } catch (const std::exception&) {
+                    return Response(Status::ERR);
+                }
+                const bool is_deposit = req.cmd == Command::DEPOSIT;
+                TxResult res = is_deposit ? deposit(store, req.key, amount)
+                                          : withdraw(store, req.key, amount);
+                const char* op = is_deposit ? "DEPOSIT" : "WITHDRAW";
+                switch (res.status) {
+                    case TxStatus::Ok:
+                        spdlog::info("{} {} {} -> {}", op, req.key, amount, res.balance);
+                        return Response(Status::OK, std::to_string(res.balance));
+                    case TxStatus::NotFound:
+                        return Response(Status::NOT_FOUND);
+                    default:
+                        spdlog::warn("{} {} rejected", op, req.key);
+                        return Response(Status::ERR);
+                }
             }
             default:
                 spdlog::warn("unknown command {}", static_cast<int>(req.cmd));

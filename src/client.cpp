@@ -14,6 +14,8 @@ void printUsage() {
               << "  client set <key> <value>\n"
               << "  client get <key>\n"
               << "  client scan <prefix>\n"
+              << "  client deposit <account> <amount>\n"
+              << "  client withdraw <account> <amount>\n"
               << "  client dump\n";
 }
 
@@ -49,6 +51,10 @@ int main(int argc, char** argv) {
         req = Request(Command::GET, pos[1]);
     } else if (cmd == "scan" && pos.size() == 2) {
         req = Request(Command::SCAN, pos[1]);
+    } else if (cmd == "deposit" && pos.size() == 3) {
+        req = Request(Command::DEPOSIT, pos[1], pos[2]);
+    } else if (cmd == "withdraw" && pos.size() == 3) {
+        req = Request(Command::WITHDRAW, pos[1], pos[2]);
     } else if (cmd == "dump") {
         req = Request(Command::DUMP, "");
     } else {

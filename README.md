@@ -60,6 +60,64 @@ run-tests.ps1  build + unit + end-to-end test script
 CMakeLists.txt build + dependency fetching
 ```
 
+## System diagram
+
+How a request flows through the (currently single-node) system. Arrows are
+labelled with the API calls / payloads. GitHub renders the Mermaid below inline.
+
+```mermaid
+flowchart TB
+    subgraph clients["Client nodes"]
+        C1["Individual<br/>(CLI client)"]
+        C2["System batch<br/>(payroll / tax)"]
+    end
+
+    subgraph server["Bank server — single node (ASIO)"]
+        NET["TcpServer<br/>io_context + worker pool"]
+        SES["Session<br/>4-byte length framing"]
+        PR["ProtocolEncoder<br/>decode / encode"]
+        H["Command handler"]
+        ST["Store (StorageEngine)<br/>ordered std::map + mutex"]
+        KS[("Keyspace<br/>accounts/... (seeded)")]
+    end
+
+    C1 -- "SET / GET / SCAN / DUMP" --> NET
+    C2 -- "SET / GET / SCAN / DUMP" --> NET
+    NET --> SES --> PR --> H --> ST --> KS
+    SES -. "OK / NOT_FOUND / ERR (+ data)" .-> C1
+    SES -. "framed response" .-> C2
+```
+
+Request lifecycle for a single call:
+
+```mermaid
+sequenceDiagram
+    participant C as Client (SyncClient)
+    participant S as Session (ASIO)
+    participant P as ProtocolEncoder
+    participant H as Handler
+    participant St as Store
+    C->>S: length-framed request bytes
+    S->>P: decodeRequest(bytes)
+    P-->>S: Request{cmd,key,value} or error
+    S->>H: handler(Request)
+    H->>St: set / get / scan / dump
+    St-->>H: value / rows / status
+    H-->>S: Response{status, data}
+    S->>P: encodeResponse(Response)
+    S-->>C: length-framed response bytes
+```
+
+Planned distributed topology (not built yet — see the roadmap):
+
+```mermaid
+flowchart LR
+    CL["Clients"] -- "writes (redirected to leader)" --> L["Leader node"]
+    L -- "Raft: AppendEntries / RequestVote" --> F1["Follower"]
+    L -- "Raft: AppendEntries / RequestVote" --> F2["Follower"]
+    F1 -. "replicated state machine" .- F2
+```
+
 ## Build
 
 Needs a C++20 compiler (e.g. `g++`) and CMake. CMake fetches the dependencies

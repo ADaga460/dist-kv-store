@@ -15,7 +15,9 @@ enum class Command : uint8_t {
     SET = 0x01,
     GET = 0x02,
     DUMP = 0x03,
-    SCAN = 0x04
+    SCAN = 0x04,
+    DEPOSIT = 0x05,
+    WITHDRAW = 0x06
 };
 
 enum class Status : uint8_t {

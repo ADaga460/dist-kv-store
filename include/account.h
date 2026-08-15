@@ -22,3 +22,13 @@ std::string serializeAccount(const Account& acct);
 std::optional<Account> deserializeAccount(const std::string& data);
 
 void seedAccounts(StorageEngine& store);
+
+enum class TxStatus { Ok, NotFound, InsufficientFunds, InvalidAmount };
+
+struct TxResult {
+    TxStatus status;
+    int64_t balance = 0;
+};
+
+TxResult deposit(StorageEngine& store, const std::string& key, int64_t amount);
+TxResult withdraw(StorageEngine& store, const std::string& key, int64_t amount);
